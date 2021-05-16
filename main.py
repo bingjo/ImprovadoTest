@@ -55,6 +55,7 @@ class Task:
         self.dictionary = dictionary
         self.orderBy = 'D1'
         self.groupBy = 'D'
+        self.task_error = False
 
     def get_tsv(self):
         pass
@@ -95,6 +96,51 @@ class BasicTask(Task):
         Task.write_tsv(headers, values, 'basic_results.tsv')
 
 
+# Решение продвинутой задачи
+class AdvancedTask(Task):
+    def get_tsv(self):
+        quantity = 0
+        headers = list(self.dictionary.keys())
+        # Поставить на первые n позиций столбцы,
+        # по которым будет производится группировка.
+        group_dictionary = dict()
+        for h in headers:
+            if self.groupBy in h:
+                group_dictionary[h] = self.dictionary.pop(h)
+                quantity += 1
+        group_dictionary.update(self.dictionary)
+        # Получение заголовков и строк
+        headers, values = Task.transpose(group_dictionary)
+        # Создание сгруппированного словаря.
+        #
+        # В качестве ключа выступаю первые n значений,
+        # по которым будет производится сортировка, например, (b, a, c).
+        # В качестве значений высьупают M1...Mn.
+        group_by_d_dict = defaultdict(list)
+        for v in values:
+            k = tuple(v[:quantity])
+            v_int = v[quantity:]
+            # Преобразование строк в числа
+            for i in range(len(v_int)):
+                # Обработка ошибки преобразования
+                try:
+                    v_int[i] = int(v_int[i])
+                except ValueError:
+                    v_int[i] = 0
+                    self.task_error = True
+            # Поэлементное сложение M1...Mn по уникальным
+            # значениям комбинаций строк из D1...Dn.
+            group_by_d_dict[k] = [sum(n) for n in zip_longest(group_by_d_dict[k], v_int, fillvalue=0)]
+        # Преобразование словаря в список для записи в файл.
+        group_by_d_dict = list(dict(group_by_d_dict).items())
+        values = [list(n) + m for n, m in list(dict(group_by_d_dict).items())]
+        for i in range(len(headers)):
+            headers[i] = headers[i].replace('M', 'MS')
+        values = sorted(values, key=lambda x: x[0])
+        # Запись в файл
+        Task.write_tsv(headers, values, 'advanced_results.tsv')
+
+
 def get_unique_headers(headers: list, values: list):
     # Получение заголовков, которые встречаются во всех файлах.
     unique_headers = sorted(set.intersection(*map(set, headers)), key=lambda x: headers[0].index(x))
@@ -103,18 +149,26 @@ def get_unique_headers(headers: list, values: list):
         for v in values:
             dd[k] += (v[k])
     # Выполнения задач
-    tasks = [BasicTask(dict(dd))]
+    tasks = [BasicTask(dict(dd)),
+             AdvancedTask(dict(dd))]
     for t in tasks:
         t.get_tsv()
+        if t.task_error is True:
+            print('В процессе работы программы произошла ошибка '
+                  'выполнения задачи, результаты могут быть некорректными!')
 
 
 def read_file(f: list):
     headers = []
     values = []
     for file in f:
-        v, h = file.open_file()
-        headers.append(h)
-        values.append(v)
+        try:
+            v, h = file.open_file()
+            headers.append(h)
+            values.append(v)
+        except FileNotFoundError:
+            print('В процессе работы программы произошла ошибка чтения файла, '
+                  'результаты могут быть некорректными!')
     get_unique_headers(headers, values)
 
 
@@ -126,4 +180,7 @@ if __name__ == '__main__':
         OpenJsonFile('json_data.json'),
         OpenXmlFile('xml_data.xml')
     ]
-    read_file(files)
+    try:
+        read_file(files)
+    except Exception:
+        print('В процессе работы программы произошла ошибка!')
